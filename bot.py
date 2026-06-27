@@ -1,5 +1,5 @@
 RAM
-Telegram-бот: PDF накладная → Акт приёма-передачи (Excel)
+Telegram-бот: PDF накладная - Акт приёма-передачи (Excel)
 Требования: pip install python-telegram-bot anthropic openpyxl
 """
 

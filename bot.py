@@ -1,4 +1,4 @@
-"""
+RAM
 Telegram-бот: PDF накладная → Акт приёма-передачи (Excel)
 Требования: pip install python-telegram-bot anthropic openpyxl
 """
@@ -15,8 +15,72 @@ import anthropic
 from excel_generator import generate_act
 
 # ── Настройки ──────────────────────────────────────────────────────────────
-TELEGRAM_TOKEN = "ВАШ_TELEGRAM_BOT_TOKEN"   # от @BotFather
+ _TOKEN = "ВАШ_TELEGRAM_BOT_TOKEN"   # от @BotFather
 ANTHROPIC_API_KEY = "ВАШ_ANTHROPIC_API_KEY"  # с console.anthropic.com
+TEMPLATE_PATH = "template.xlsm"              # шаблон акта рядом с bot.py
+
+logging.basicConfig(
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+
+# ── Извлечение данных из скана через Claude Vision ─────────────────────────
+def extract_invoice_data(pdf_bytes: bytes) -> dict:
+    """Отправляет PDF-скан в Claude и получает структурированные данные."""
+
+    pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
+
+    prompt = """Ты — эксперт по распознаванию документов. Перед тобой скан накладной (товарная накладная / УПД).
+
+Извлеки следующие данные и верни ТОЛЬКО валидный JSON без пояснений:
+
+{
+  "doc_number": "номер документа",
+  "doc_date": "дата документа в формате ДД.ММ.ГГГГ",
+  "supplier": "наименование поставщика",
+  "recipient": "наименование получателя",
+  "items": [
+    {
+      "name": "наименование материала/товара",
+      "article": "артикул или код (если есть, иначе пустая строка)",
+      "quantity": число (только число, без единиц),
+      "unit": "единица измерения (шт, м, кг и т.д.)"
+    }
+  ]
+}
+
+Если какое-то поле не удаётся прочитать — оставь пустую строку или 0.
+Верни только JSON, без markdown, без пояснений."""
+
+    response = client.messages.create(
+        model="claude-opus-4-6",
+        max_tokens=2000,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": pdf_b64,
+                        },
+                    },
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ],
+    )
+
+    raw = response.content[0].text.strip()
+    # Убираем возможные markdown-обёртки
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
 TEMPLATE_PATH = "template.xlsm"              # шаблон акта рядом с bot.py
 
 logging.basicConfig(

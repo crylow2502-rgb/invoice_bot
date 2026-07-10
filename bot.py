@@ -1,9 +1,10 @@
+# -*- coding: utf-8 -*-
 """
 Telegram-bot: PDF invoice to Excel act
-Requirements: pip install python-telegram-bot anthropic openpyxl
 """
 
 import os
+import sys
 import json
 import base64
 import logging
@@ -13,6 +14,10 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 import anthropic
 from excel_generator import generate_act
+
+# Force UTF-8 encoding
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
@@ -31,24 +36,11 @@ def extract_invoice_data(pdf_bytes: bytes) -> dict:
     pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
 
     prompt = (
-        "You are an expert at reading Russian invoice documents (nakladnaya/UPD). "
-        "Extract the following fields and return ONLY valid JSON with no explanation:\n\n"
-        "{\n"
-        '  "doc_number": "document number",\n'
-        '  "doc_date": "document date in format DD.MM.YYYY",\n'
-        '  "supplier": "supplier company name",\n'
-        '  "recipient": "recipient company name",\n'
-        '  "items": [\n'
-        '    {\n'
-        '      "name": "material or product name",\n'
-        '      "article": "article or code (empty string if not found)",\n'
-        '      "quantity": 0,\n'
-        '      "unit": "unit of measurement"\n'
-        '    }\n'
-        '  ]\n'
-        "}\n\n"
-        "If a field cannot be read, use empty string or 0. "
-        "Return only JSON, no markdown, no explanation."
+        "You are an expert at reading Russian invoice documents.\n"
+        "Extract data and return ONLY valid JSON:\n"
+        '{"doc_number":"","doc_date":"DD.MM.YYYY","supplier":"","recipient":"",'
+        '"items":[{"name":"","article":"","quantity":0,"unit":""}]}\n'
+        "Return only JSON, no markdown."
     )
 
     response = client.messages.create(
@@ -82,9 +74,7 @@ def extract_invoice_data(pdf_bytes: bytes) -> dict:
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Privet!\n\n"
-        "Otprav mne PDF-skan nakladnoj, i ya sformiruu akt priema-peredachi materialov v formate Excel.\n\n"
-        "Prosto prikrepi PDF-fajl k soobshcheniyu."
+        "Bot zapuschen!\n\nOtprav PDF-skan nakladnoj i poluchi akt Excel."
     )
 
 
@@ -92,37 +82,35 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
 
     if doc.mime_type != "application/pdf" and not doc.file_name.lower().endswith(".pdf"):
-        await update.message.reply_text("Pozhalujsta, otprav fajl v formate PDF.")
+        await update.message.reply_text("Otprav fajl v formate PDF.")
         return
 
-    msg = await update.message.reply_text("Chitau nakladnuyu, podozhdite...")
+    msg = await update.message.reply_text("Chitau nakladnuyu...")
 
     try:
         file = await context.bot.get_file(doc.file_id)
         pdf_bytes = await file.download_as_bytearray()
 
-        await msg.edit_text("Raspoznayu dannye cherez AI...")
+        await msg.edit_text("Raspoznayu...")
 
         data = extract_invoice_data(bytes(pdf_bytes))
-        logger.info(f"Extracted: {data}")
+        logger.info("Extracted: %s", str(data)[:200])
 
-        await msg.edit_text("Formiruyu akt Excel...")
+        await msg.edit_text("Formiruyu Excel...")
 
         output_path = f"act_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         generate_act(data, TEMPLATE_PATH, output_path)
 
-        caption = (
-            f"Akt sformirovan\n\n"
-            f"Nakladnaya No{data.get('doc_number', '-')} "
-            f"ot {data.get('doc_date', '-')}\n"
-            f"Postavshchik: {data.get('supplier', '-')}\n"
-            f"Pozicij: {len(data.get('items', []))}"
-        )
+        num = str(data.get("doc_number", "-"))
+        dt = str(data.get("doc_date", "-"))
+        sup = str(data.get("supplier", "-"))
+        cnt = str(len(data.get("items", [])))
+        caption = f"Akt gotov. No{num} ot {dt}. Postavshchik: {sup}. Pozicij: {cnt}"
 
         with open(output_path, "rb") as f:
             await update.message.reply_document(
                 document=f,
-                filename=f"Akt_{data.get('doc_number', 'bez_nomera')}.xlsx",
+                filename=f"Akt_{num}.xlsx",
                 caption=caption,
             )
 
@@ -130,23 +118,24 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         os.remove(output_path)
 
     except json.JSONDecodeError:
-        await msg.edit_text("Ne udalos raspoznat strukturu nakladnoj. Poprobuj drugoj fajl.")
+        await msg.edit_text("Ne udalos raspoznat nakladnuyu.")
         logger.exception("JSON parse error")
     except Exception as e:
-        await msg.edit_text(f"Oshibka: {e}")
-        logger.exception("Unexpected error")
+        await msg.edit_text(f"Oshibka: {type(e).__name__}")
+        logger.exception("Error: %s", e)
 
 
 async def handle_other(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Otprav PDF-fajl nakladnoj.")
+    await update.message.reply_text("Otprav PDF nakladnuyu.")
 
 
 def main():
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_other))
-    logger.info("Bot started...")
+    logger.info("Bot started.")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 

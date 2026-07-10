@@ -15,8 +15,8 @@ import anthropic
 from excel_generator import generate_act
 
 # ── Настройки ──────────────────────────────────────────────────────────────
- _TOKEN = "ВАШ_TELEGRAM_BOT_TOKEN"   # от @BotFather
-ANTHROPIC_API_KEY = "ВАШ_ANTHROPIC_API_KEY"  # с console.anthropic.com
+ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 TEMPLATE_PATH = "template.xlsm"              # шаблон акта рядом с bot.py
 
 logging.basicConfig(

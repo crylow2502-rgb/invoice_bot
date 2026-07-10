@@ -1,6 +1,6 @@
 """
-Telegram-bot: PDF nakladnaya - Akt priema-peredachi (Excel)
-Trebovaniya: pip install python-telegram-bot anthropic openpyxl
+Telegram-bot: PDF invoice to Excel act
+Requirements: pip install python-telegram-bot anthropic openpyxl
 """
 
 import os
@@ -14,7 +14,6 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import anthropic
 from excel_generator import generate_act
 
-# Nastrojki
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 TEMPLATE_PATH = "template.xlsm"
@@ -29,31 +28,28 @@ client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 
 def extract_invoice_data(pdf_bytes: bytes) -> dict:
-    """Otpravlyaet PDF-skan v Claude i poluchaet strukturirovannye dannye."""
-
     pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
 
-    prompt = """Ty - ekspert po raspoznavaniyu dokumentov. Pered toboj skan nakladnoj (tovarnaya nakladnaya / UPD).
-
-Izvleki sleduyushchie dannye i verni TOLKO validnyj JSON bez poyasnenij:
-
-{
-  "doc_number": "nomer dokumenta",
-  "doc_date": "data dokumenta v formate DD.MM.YYYY",
-  "supplier": "naimenovanie postavshchika",
-  "recipient": "naimenovanie poluchatelya",
-  "items": [
-    {
-      "name": "naimenovanie materiala/tovara",
-      "article": "artikul ili kod (esli est, inache pustaya stroka)",
-      "quantity": 0,
-      "unit": "edinica izmeneniya (sht, m, kg i t.d.)"
-    }
-  ]
-}
-
-Esli kakoe-to pole ne udaetsya prochitat - ostav pustuu stroku ili 0.
-Verni tolko JSON, bez markdown, bez poyasnenij."""
+    prompt = (
+        "You are an expert at reading Russian invoice documents (nakladnaya/UPD). "
+        "Extract the following fields and return ONLY valid JSON with no explanation:\n\n"
+        "{\n"
+        '  "doc_number": "document number",\n'
+        '  "doc_date": "document date in format DD.MM.YYYY",\n'
+        '  "supplier": "supplier company name",\n'
+        '  "recipient": "recipient company name",\n'
+        '  "items": [\n'
+        '    {\n'
+        '      "name": "material or product name",\n'
+        '      "article": "article or code (empty string if not found)",\n'
+        '      "quantity": 0,\n'
+        '      "unit": "unit of measurement"\n'
+        '    }\n'
+        '  ]\n'
+        "}\n\n"
+        "If a field cannot be read, use empty string or 0. "
+        "Return only JSON, no markdown, no explanation."
+    )
 
     response = client.messages.create(
         model="claude-opus-4-6",
@@ -108,8 +104,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text("Raspoznayu dannye cherez AI...")
 
         data = extract_invoice_data(bytes(pdf_bytes))
-
-        logger.info(f"Izvlecheno: {data}")
+        logger.info(f"Extracted: {data}")
 
         await msg.edit_text("Formiruyu akt Excel...")
 
@@ -148,12 +143,10 @@ async def handle_other(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_other))
-
-    logger.info("Bot zapushchen...")
+    logger.info("Bot started...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 

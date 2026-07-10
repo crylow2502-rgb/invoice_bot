@@ -53,7 +53,7 @@ def extract_invoice_data(pdf_bytes: bytes) -> dict:
   ]
 }
 
-Если какое-то поле не удаётся прочитать — оставь пустую строку или 0.
+Если какое-то поле не удаётся прочитать -
 Верни только JSON, без markdown, без пояснений."""
 
     response = client.messages.create(
